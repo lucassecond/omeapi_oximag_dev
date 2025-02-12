@@ -1,67 +1,50 @@
-version: '3.7'
-
+version: '3.8'
 services:
-  # Serviço MongoDB
-  mongodb:
-    image: mongo:6
-    container_name: mongodb
-    restart: always
+  python-job:
+    build:
+      context: .
+      dockerfile: docker/python/Dockerfile
+    volumes:
+      - json-volume:/data  # Volume exclusivo para os JSON gerados
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
-      MONGO_INITDB_DATABASE: ${MONGO_DB}
+      - PYTHON_ENV=production
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    volumes:
+      - mongo-data:/data/db  # Volume exclusivo para os dados do MongoDB
     ports:
       - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js
-    networks:
-      custom_network:
-        ipv4_address: 192.168.76.101  # IP fixo para o MongoDB
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # Serviço PostgreSQL
   postgres:
-    image: postgres:15
+    image: postgres:latest
     container_name: postgres
-    restart: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      - POSTGRES_USER=omieapi
+      - POSTGRES_PASSWORD="admin123%"
+      - POSTGRES_DB=db_omieoximag
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./postgres-init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      custom_network:
-        ipv4_address: 192.168.76.102  # IP fixo para o PostgreSQL
-
-  # Serviço da aplicação Python
-  app:
-    build: .
-    container_name: python_app
+      - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
-    volumes:
-      - ./data:/app/data
-      - ./app:/app
-    depends_on:
-      - mongodb
-      - postgres
-    entrypoint: ["bash", "-c", "watch -n 43200 python3 /app/consulta_omie.py && python3 /app/vendedores.py && python3 /app/clientes.py && python3 /app/processador.py"]
-    networks:
-      custom_network:
-        ipv4_address: 192.168.76.100  # IP fixo para o Python App
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omieapi"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-# Configuração da rede personalizada com sub-rede e IP fixo
-networks:
-  custom_network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: "192.168.76.0/24"  # Sub-rede para os IPs fixos
-
-# Volumes para persistência de dados
 volumes:
-  mongo_data:
-  postgres_data:
+  json-volume:
+  mongo-data:
+  pgdata:
