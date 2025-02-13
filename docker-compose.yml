@@ -6,15 +6,31 @@ services:
       context: .
       dockerfile: docker/python/Dockerfile
     volumes:
-      - json-volume:/data  # Volume exclusivo para os JSON gerados
+      - json-volume:/data
     environment:
       - PYTHON_ENV=production
     restart: unless-stopped
     depends_on:
       - mongodb
+      - postgres
     networks:
       omie_net:
         ipv4_address: 172.28.0.2
+
+  etl-job:
+    build:
+      context: .
+      dockerfile: docker/python/Dockerfile
+    volumes:
+      - json-volume:/data
+    command: ["python", "app/etl.py"]  # 🚀 Agora o ETL roda automaticamente
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+      - postgres
+    networks:
+      omie_net:
+        ipv4_address: 172.28.0.5
 
   mongodb:
     image: mongo:latest
@@ -24,11 +40,6 @@ services:
     ports:
       - "27017:27017"
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     networks:
       omie_net:
         ipv4_address: 172.28.0.3
@@ -44,13 +55,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-    command: ["postgres", "-c", "listen_addresses='*'"]
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U omieapi"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     networks:
       omie_net:
         ipv4_address: 172.28.0.4
