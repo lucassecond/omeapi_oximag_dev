@@ -1,194 +1,68 @@
-import json
-import os
-import tempfile
-import logging
-import requests
-from pymongo import MongoClient
+version: '3.8'
 
-# Configuração do logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[logging.StreamHandler()]
-)
+services:
+  python-job:
+    build:
+      context: .
+      dockerfile: docker/python/Dockerfile
+    volumes:
+      - json-volume:/data  # Volume exclusivo para os JSON gerados
+    environment:
+      - PYTHON_ENV=production
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+    networks:
+      omie_net:
+        ipv4_address: 172.28.0.2
 
-# Configuração do MongoDB
-MONGO_URI = "mongodb://mongodb:27017/"
-MONGO_DB_NAME = "omie_db"
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    volumes:
+      - mongo-data:/data/db
+    ports:
+      - "27017:27017"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      omie_net:
+        ipv4_address: 172.28.0.3
 
-def write_json_atomic(data, target_path):
-    """
-    Escreve dados JSON de forma atômica para evitar leitura de arquivos parcialmente gravados.
-    """
-    dir_name = os.path.dirname(target_path)
-    with tempfile.NamedTemporaryFile('w', dir=dir_name, delete=False, suffix=".tmp") as tmp_file:
-        json.dump(data, tmp_file, indent=4)
-        temp_path = tmp_file.name
-    os.rename(temp_path, target_path)
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=omieapi
+      - POSTGRES_PASSWORD=admin123%
+      - POSTGRES_DB=db_omieoximag
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    command: ["postgres", "-c", "listen_addresses='*'"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omieapi"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      omie_net:
+        ipv4_address: 172.28.0.4
 
-def generate_clientes():
-    """
-    Consulta a API Omie para obter a lista de clientes e gera o arquivo JSON 'clientes.json'.
-    """
-    APP_KEY = "1092958907040"
-    APP_SECRET = "f89956dec1af07e9334ccca7e2e78710"
-    URL = "https://app.omie.com.br/api/v1/geral/clientes/"
-    REGISTROS_POR_PAGINA = 500
+volumes:
+  json-volume:
+  mongo-data:
+  pgdata:
 
-    pagina = 1
-    clientes_totais = []
-    logging.info("Iniciando consulta de clientes...")
-
-    while True:
-        payload = {
-            "call": "ListarClientes",
-            "app_key": APP_KEY,
-            "app_secret": APP_SECRET,
-            "param": [
-                {
-                    "pagina": pagina,
-                    "registros_por_pagina": REGISTROS_POR_PAGINA,
-                    "apenas_importado_api": "N"
-                }
-            ]
-        }
-
-        try:
-            response = requests.post(
-                URL,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-                timeout=30
-            )
-            if response.status_code == 200:
-                data = response.json()
-                if "clientes_cadastro" in data and data["clientes_cadastro"]:
-                    clientes_totais.extend(data["clientes_cadastro"])
-                    logging.info("Página %s carregada. Total acumulado: %d clientes.", pagina, len(clientes_totais))
-                    pagina += 1
-                else:
-                    logging.info("Nenhum dado adicional encontrado na página %s.", pagina)
-                    break
-            else:
-                logging.error("Erro ao obter clientes: status code %s", response.status_code)
-                break
-        except Exception as e:
-            logging.error("Erro na consulta de clientes: %s", e)
-            break
-
-    save_and_import("clientes.json", clientes_totais, "clientes")
-
-def generate_faturamento():
-    """
-    Consulta a API Omie para listar pedidos faturados e gera o arquivo JSON 'faturamento.json'.
-    Mantém a data fixa de 11/02/2025.
-    """
-    url = "https://app.omie.com.br/api/v1/produtos/pedido/#ListarPedidos"
-    headers = {"Content-Type": "application/json"}
-    payload = {
-        "call": "ListarPedidos",
-        "app_key": "1092958907040",
-        "app_secret": "f89956dec1af07e9334ccca7e2e78710",
-        "param": [
-            {
-                "pagina": 1,
-                "registros_por_pagina": 99999999999,
-                "apenas_importado_api": "N",
-                "status_pedido": "FATURADO",
-                "data_faturamento_de": "11/02/2025",  # DATA FIXA
-                "data_faturamento_ate": "11/02/2025"   # DATA FIXA
-            }
-        ]
-    }
-
-    logging.info("Consultando API de faturamento para a data fixa 11/02/2025...")
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
-        if response.status_code == 200:
-            data = response.json()
-            save_and_import("faturamento.json", data, "faturamento")
-        else:
-            logging.error("Erro na consulta de faturamento: status code %s", response.status_code)
-    except Exception as e:
-        logging.error("Erro na consulta de faturamento: %s", e)
-
-def generate_vendedores():
-    """
-    Consulta a API Omie para obter a lista de vendedores e gera o arquivo JSON 'vendedores.json'.
-    """
-    url_vendedores = "https://app.omie.com.br/api/v1/geral/vendedores/"
-    payload_vendedores = {
-        "call": "ListarVendedores",
-        "app_key": "1092958907040",
-        "app_secret": "f89956dec1af07e9334ccca7e2e78710",
-        "param": [
-            {
-                "pagina": 1,
-                "registros_por_pagina": 100,
-                "apenas_importado_api": "N"
-            }
-        ]
-    }
-
-    logging.info("Consultando API de vendedores...")
-    try:
-        response = requests.post(
-            url_vendedores,
-            json=payload_vendedores,
-            headers={"Content-Type": "application/json"},
-            timeout=30
-        )
-        if response.status_code == 200:
-            vendedores_data = response.json()
-            if 'cadastro' in vendedores_data:
-                vendedores = vendedores_data['cadastro']
-                save_and_import("vendedores.json", vendedores, "vendedores")
-            else:
-                logging.error("Erro: Nenhum vendedor encontrado na resposta.")
-        else:
-            logging.error("Erro ao obter vendedores: status code %s", response.status_code)
-    except Exception as e:
-        logging.error("Erro na consulta de vendedores: %s", e)
-
-def save_and_import(filename, data, collection_name):
-    """
-    Salva os dados JSON no diretório '/data' e os importa automaticamente para o MongoDB.
-    """
-    data_dir = '/data'
-    os.makedirs(data_dir, exist_ok=True)
-    target_path = os.path.join(data_dir, filename)
-
-    # Salva JSON localmente
-    write_json_atomic(data, target_path)
-    logging.info("Arquivo '%s' gerado com sucesso.", target_path)
-
-    # Importa para o MongoDB
-    try:
-        client = MongoClient(MONGO_URI)
-        db = client[MONGO_DB_NAME]
-        collection = db[collection_name]
-
-        # Limpa os dados antigos antes de inserir os novos
-        collection.delete_many({})
-        collection.insert_many(data if isinstance(data, list) else [data])
-        logging.info("Dados importados para a collection '%s' no MongoDB.", collection_name)
-
-    except Exception as e:
-        logging.error("Erro ao importar dados para o MongoDB: %s", e)
-
-def main():
-    logging.info("Iniciando a consulta à API e geração dos arquivos JSON...")
-    generate_clientes()
-    generate_faturamento()
-    generate_vendedores()
-
-    # Cria um arquivo de flag para indicar que a importação foi concluída
-    data_dir = '/data'
-    os.makedirs(data_dir, exist_ok=True)
-    flag_path = os.path.join(data_dir, "done.flag")
-    with open(flag_path, 'w') as f:
-        f.write("done")
-    logging.info("Geração e importação de dados concluída com sucesso!")
-
-if __name__ == "__main__":
-    main()
+networks:
+  omie_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
