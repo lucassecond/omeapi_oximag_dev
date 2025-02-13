@@ -17,20 +17,20 @@ services:
       omie_net:
         ipv4_address: 172.28.0.2
 
-  etl-job:
-    build:
-      context: .
-      dockerfile: docker/python/Dockerfile
-    volumes:
-      - json-volume:/data
-    command: ["python", "app/etl.py"]  # 🚀 Agora o ETL roda automaticamente
-    restart: unless-stopped
-    depends_on:
-      - mongodb
-      - postgres
-    networks:
-      omie_net:
-        ipv4_address: 172.28.0.5
+  tl-job:
+  build:
+    context: .
+    dockerfile: docker/python/Dockerfile
+  volumes:
+    - ./app:/app
+  command: ["python", "app/etl.py"]  # 🔥 Substitua por ["python", "/app/etl.py"]
+  restart: unless-stopped
+  depends_on:
+    - mongodb
+    - postgres
+  networks:
+    omie_net:
+      ipv4_address: 172.28.0.5
 
   mongodb:
     image: mongo:latest
