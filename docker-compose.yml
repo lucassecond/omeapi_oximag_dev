@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: docker/python/Dockerfile
     volumes:
-      - json-volume:/data
+      - json-volume:/data  # ✅ Volume correto
     environment:
       - PYTHON_ENV=production
     restart: unless-stopped
@@ -22,8 +22,8 @@ services:
       context: .
       dockerfile: docker/python/Dockerfile
     volumes:
-      - ./app:/app
-    command: ["python", "/app/etl.py"]  # ✅ Caminho corrigido
+      - json-volume:/data  # ✅ Agora o ETL também pode acessar os JSONs
+    command: ["python", "/app/etl.py"]
     restart: unless-stopped
     depends_on:
       - mongodb
@@ -36,6 +36,7 @@ services:
     image: mongo:latest
     container_name: mongodb
     volumes:
+      - json-volume:/data  # ✅ Agora o MongoDB pode acessar os JSONs
       - mongo-data:/data/db
     ports:
       - "27017:27017"
@@ -61,7 +62,7 @@ services:
         ipv4_address: 172.28.0.4
 
 volumes:
-  json-volume:
+  json-volume:  # ✅ Volume compartilhado entre os serviços
   mongo-data:
   pgdata:
 
