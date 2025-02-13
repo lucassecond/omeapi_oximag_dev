@@ -1,18 +1,15 @@
-# docker/python/Dockerfile
-FROM python:3.9-slim
+# Usa uma imagem base do Python
+FROM python:3.9
 
-# Define o diretório de trabalho
+# Define o diretório de trabalho dentro do contêiner
 WORKDIR /app
 
-# Copia o arquivo de dependências e instala os pacotes
-COPY app/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copia os arquivos do projeto para o contêiner
+COPY app/ /app/
 
-# Copia o restante do código da aplicação
-COPY app/ .
+# Instala dependências do projeto
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir requests pymongo psycopg2-binary
 
-# Define a variável de ambiente para produção
-ENV PYTHON_ENV=production
-
-# Executa o script principal
-CMD ["python", "main.py"]
+# Define o comando padrão para rodar o contêiner
+CMD ["python", "/app/main.py"]
