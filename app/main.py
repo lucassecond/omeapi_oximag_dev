@@ -42,109 +42,130 @@ def consulta_api(url, payload):
 
 def generate_clientes():
     """
-    Consulta a API Omie para obter a lista de clientes e gera o arquivo JSON 'clientes.json' na pasta /data.
+    Consulta a API Omie para obter a lista de clientes, paginando os resultados,
+    e gera o arquivo JSON 'clientes.json' na pasta /data.
     """
     APP_KEY = "1092958907040"
     APP_SECRET = "f89956dec1af07e9334ccca7e2e78710"
     URL = "https://app.omie.com.br/api/v1/geral/clientes/"
     REGISTROS_POR_PAGINA = 500
 
-    payload = {
-        "call": "ListarClientes",
-        "app_key": APP_KEY,
-        "app_secret": APP_SECRET,
-        "param": [
-            {
-                "pagina": 1,
-                "registros_por_pagina": REGISTROS_POR_PAGINA,
-                "apenas_importado_api": "N"
-            }
-        ]
-    }
+    pagina = 1
+    clientes_totais = []
+    logging.info("Iniciando consulta de clientes...")
 
-    logging.info("Consultando API de clientes...")
-    data = consulta_api(URL, payload)
+    while True:
+        payload = {
+            "call": "ListarClientes",
+            "app_key": APP_KEY,
+            "app_secret": APP_SECRET,
+            "param": [
+                {
+                    "pagina": pagina,
+                    "registros_por_pagina": REGISTROS_POR_PAGINA,
+                    "apenas_importado_api": "N"
+                }
+            ]
+        }
 
-    if data and "clientes_cadastro" in data:
-        write_json_atomic(data["clientes_cadastro"], "/data/clientes.json")
-    else:
-        logging.error("Erro: Nenhum cliente encontrado na resposta.")
+        data = consulta_api(URL, payload)
+        if data and "clientes_cadastro" in data and data["clientes_cadastro"]:
+            clientes_totais.extend(data["clientes_cadastro"])
+            logging.info("Página %s carregada. Total acumulado: %d clientes.", pagina, len(clientes_totais))
+            pagina += 1
+        else:
+            logging.info("Nenhum dado adicional encontrado na página %s.", pagina)
+            break
+
+    write_json_atomic(clientes_totais, "/data/clientes.json")
 
 def generate_faturamento():
     """
     Consulta a API Omie para listar pedidos faturados e gera o arquivo JSON 'faturamento.json' na pasta /data.
     Agora, a data é de 01/01/2020 até hoje.
     """
-    url = "https://app.omie.com.br/api/v1/produtos/pedido/#ListarPedidos"
-    
+    APP_KEY = "1092958907040"
+    APP_SECRET = "f89956dec1af07e9334ccca7e2e78710"
+    URL = "https://app.omie.com.br/api/v1/produtos/pedido/"
+    REGISTROS_POR_PAGINA = 500
+
     data_inicio = "01/01/2020"
     data_fim = datetime.now().strftime("%d/%m/%Y")  # Data atual
 
-    payload = {
-        "call": "ListarPedidos",
-        "app_key": "1092958907040",
-        "app_secret": "f89956dec1af07e9334ccca7e2e78710",
-        "param": [
-            {
-                "pagina": 1,
-                "registros_por_pagina": 500,
-                "apenas_importado_api": "N",
-                "status_pedido": "FATURADO",
-                "data_faturamento_de": data_inicio,
-                "data_faturamento_ate": data_fim
-            }
-        ]
-    }
-
+    pagina = 1
+    pedidos_totais = []
     logging.info(f"Consultando API de faturamento de {data_inicio} até {data_fim}...")
-    data = consulta_api(url, payload)
 
-    if data and "pedido_cadastro" in data:
-        write_json_atomic(data["pedido_cadastro"], "/data/faturamento.json")
-    else:
-        logging.error("Erro: Nenhum pedido faturado encontrado na resposta.")
+    while True:
+        payload = {
+            "call": "ListarPedidos",
+            "app_key": APP_KEY,
+            "app_secret": APP_SECRET,
+            "param": [
+                {
+                    "pagina": pagina,
+                    "registros_por_pagina": REGISTROS_POR_PAGINA,
+                    "apenas_importado_api": "N",
+                    "status_pedido": "FATURADO",
+                    "data_faturamento_de": data_inicio,
+                    "data_faturamento_ate": data_fim
+                }
+            ]
+        }
+
+        data = consulta_api(URL, payload)
+        if data and "pedido_cadastro" in data and data["pedido_cadastro"]:
+            pedidos_totais.extend(data["pedido_cadastro"])
+            logging.info("Página %s carregada. Total acumulado: %d pedidos.", pagina, len(pedidos_totais))
+            pagina += 1
+        else:
+            logging.info("Nenhum dado adicional encontrado na página %s.", pagina)
+            break
+
+    write_json_atomic(pedidos_totais, "/data/faturamento.json")
 
 def generate_vendedores():
     """
-    Consulta a API Omie para obter a lista de vendedores e gera o arquivo JSON 'vendedores.json' na pasta /data.
+    Consulta a API Omie para obter a lista de vendedores, paginando os resultados,
+    e gera o arquivo JSON 'vendedores.json' na pasta /data.
     """
-    url_vendedores = "https://app.omie.com.br/api/v1/geral/vendedores/"
-    payload_vendedores = {
-        "call": "ListarVendedores",
-        "app_key": "1092958907040",
-        "app_secret": "f89956dec1af07e9334ccca7e2e78710",
-        "param": [
-            {
-                "pagina": 1,
-                "registros_por_pagina": 500,
-                "apenas_importado_api": "N"
-            }
-        ]
-    }
+    APP_KEY = "1092958907040"
+    APP_SECRET = "f89956dec1af07e9334ccca7e2e78710"
+    URL = "https://app.omie.com.br/api/v1/geral/vendedores/"
+    REGISTROS_POR_PAGINA = 500
 
-    logging.info("Consultando API de vendedores...")
-    data = consulta_api(url_vendedores, payload_vendedores)
+    pagina = 1
+    vendedores_totais = []
+    logging.info("Iniciando consulta de vendedores...")
 
-    if data and "cadastro" in data:
-        write_json_atomic(data["cadastro"], "/data/vendedores.json")
-    else:
-        logging.error("Erro: Nenhum vendedor encontrado na resposta.")
+    while True:
+        payload = {
+            "call": "ListarVendedores",
+            "app_key": APP_KEY,
+            "app_secret": APP_SECRET,
+            "param": [
+                {
+                    "pagina": pagina,
+                    "registros_por_pagina": REGISTROS_POR_PAGINA,
+                    "apenas_importado_api": "N"
+                }
+            ]
+        }
+
+        data = consulta_api(URL, payload)
+        if data and "cadastro" in data and data["cadastro"]:
+            vendedores_totais.extend(data["cadastro"])
+            logging.info("Página %s carregada. Total acumulado: %d vendedores.", pagina, len(vendedores_totais))
+            pagina += 1
+        else:
+            logging.info("Nenhum dado adicional encontrado na página %s.", pagina)
+            break
+
+    write_json_atomic(vendedores_totais, "/data/vendedores.json")
 
 def main():
     logging.info("Iniciando a consulta à API e geração dos arquivos JSON...")
     
-    generate_clientes()
-    generate_faturamento()
-    generate_vendedores()
-
-    # Criando flag para indicar que a geração foi concluída
-    flag_path = "/data/done.flag"
-    try:
-        with open(flag_path, 'w') as f:
-            f.write("done")
-        logging.info("Geração dos arquivos concluída com sucesso. Flag criada em: %s", flag_path)
-    except Exception as e:
-        logging.error("Erro ao criar flag de conclusão: %s", e)
-
-if __name__ == "__main__":
-    main()
+    generate_clientes
+::contentReference[oaicite:0]{index=0}
+ 
