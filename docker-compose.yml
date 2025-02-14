@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: docker/python/Dockerfile
     volumes:
-      - json-volume:/data  # ✅ Volume correto
+      - json-volume:/data
     environment:
       - PYTHON_ENV=production
     restart: unless-stopped
@@ -22,8 +22,9 @@ services:
       context: .
       dockerfile: docker/python/Dockerfile
     volumes:
-      - json-volume:/data  # ✅ Volume compartilhado com MongoDB
-    command: ["python", "/app/import_mongo.py"]  # ✅ Executa o script de importação automaticamente
+      - json-volume:/data
+      - ./app:/app
+    command: ["python", "/app/import_mongo.py"]
     restart: on-failure
     depends_on:
       - mongodb
@@ -36,11 +37,12 @@ services:
       context: .
       dockerfile: docker/python/Dockerfile
     volumes:
-      - json-volume:/data  # ✅ Agora o ETL também pode acessar os JSONs
+      - json-volume:/data
+      - ./app:/app
     command: ["python", "/app/etl.py"]
     restart: unless-stopped
     depends_on:
-      - mongo-importer  # ✅ Agora ele só roda depois que os JSONs forem importados
+      - mongo-importer
       - postgres
     networks:
       omie_net:
@@ -50,7 +52,7 @@ services:
     image: mongo:latest
     container_name: mongodb
     volumes:
-      - json-volume:/data  # ✅ Agora o MongoDB pode acessar os JSONs
+      - json-volume:/data
       - mongo-data:/data/db
     ports:
       - "27017:27017"
@@ -76,7 +78,7 @@ services:
         ipv4_address: 172.28.0.4
 
 volumes:
-  json-volume:  # ✅ Volume compartilhado entre os serviços
+  json-volume:
   mongo-data:
   pgdata:
 

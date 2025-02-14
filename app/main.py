@@ -3,6 +3,7 @@ import os
 import tempfile
 import logging
 import requests
+from datetime import datetime
 
 # Configuração básica do logging
 logging.basicConfig(
@@ -16,10 +17,28 @@ def write_json_atomic(data, target_path):
     Escreve dados JSON de forma atômica para evitar a leitura de arquivos parcialmente gravados.
     """
     dir_name = os.path.dirname(target_path)
+    os.makedirs(dir_name, exist_ok=True)
+    
     with tempfile.NamedTemporaryFile('w', dir=dir_name, delete=False, suffix=".tmp") as tmp_file:
-        json.dump(data, tmp_file, indent=4)
+        json.dump(data, tmp_file, indent=4, ensure_ascii=False)
         temp_path = tmp_file.name
+    
     os.rename(temp_path, target_path)
+    logging.info("Arquivo '%s' gerado com sucesso.", target_path)
+
+def consulta_api(url, payload):
+    """
+    Realiza uma requisição POST na API da Omie.
+    """
+    headers = {"Content-Type": "application/json"}
+    
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        response.raise_for_status()  # Levanta um erro se o status for ruim
+        return response.json()
+    except requests.RequestException as e:
+        logging.error("Erro na consulta à API (%s): %s", url, e)
+        return None
 
 def generate_clientes():
     """
@@ -49,41 +68,27 @@ def generate_clientes():
             ]
         }
 
-        try:
-            response = requests.post(
-                URL,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-                timeout=30
-            )
-            if response.status_code == 200:
-                data = response.json()
-                if "clientes_cadastro" in data and data["clientes_cadastro"]:
-                    clientes_totais.extend(data["clientes_cadastro"])
-                    logging.info("Página %s carregada. Total acumulado: %d clientes.", pagina, len(clientes_totais))
-                    pagina += 1
-                else:
-                    logging.info("Nenhum dado adicional encontrado na página %s.", pagina)
-                    break
-            else:
-                logging.error("Erro ao obter clientes: status code %s", response.status_code)
-                break
-        except Exception as e:
-            logging.error("Erro na consulta de clientes: %s", e)
+        data = consulta_api(URL, payload)
+        if data and "clientes_cadastro" in data and data["clientes_cadastro"]:
+            clientes_totais.extend(data["clientes_cadastro"])
+            logging.info("Página %s carregada. Total acumulado: %d clientes.", pagina, len(clientes_totais))
+            pagina += 1
+        else:
+            logging.info("Nenhum dado adicional encontrado na página %s.", pagina)
             break
 
-    data_dir = '/data'
-    os.makedirs(data_dir, exist_ok=True)
-    target_path = os.path.join(data_dir, "clientes.json")
-    write_json_atomic(clientes_totais, target_path)
-    logging.info("Arquivo '%s' gerado com sucesso.", target_path)
+    write_json_atomic(clientes_totais, "/data/clientes.json")
 
 def generate_faturamento():
     """
     Consulta a API Omie para listar pedidos faturados e gera o arquivo JSON 'faturamento.json' na pasta /data.
+    Agora, a data é de 01/01/2020 até hoje.
     """
     url = "https://app.omie.com.br/api/v1/produtos/pedido/#ListarPedidos"
-    headers = {"Content-Type": "application/json"}
+    
+    data_inicio = "01/01/2020"
+    data_fim = datetime.now().strftime("%d/%m/%Y")  # Data atual
+
     payload = {
         "call": "ListarPedidos",
         "app_key": "1092958907040",
@@ -91,29 +96,20 @@ def generate_faturamento():
         "param": [
             {
                 "pagina": 1,
-                "registros_por_pagina": 99999999999,
+                "registros_por_pagina": 500,
                 "apenas_importado_api": "N",
                 "status_pedido": "FATURADO",
-                "data_faturamento_de": "11/02/2025",
-                "data_faturamento_ate": "11/02/2025"
+                "data_faturamento_de": data_inicio,
+                "data_faturamento_ate": data_fim
             }
         ]
     }
 
-    logging.info("Consultando API de faturamento...")
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
-        if response.status_code == 200:
-            data = response.json()
-            data_dir = '/data'
-            os.makedirs(data_dir, exist_ok=True)
-            target_path = os.path.join(data_dir, "faturamento.json")
-            write_json_atomic(data, target_path)
-            logging.info("Arquivo '%s' gerado com sucesso.", target_path)
-        else:
-            logging.error("Erro na consulta de faturamento: status code %s", response.status_code)
-    except Exception as e:
-        logging.error("Erro na consulta de faturamento: %s", e)
+    logging.info(f"Consultando API de faturamento de {data_inicio} até {data_fim}...")
+    data = consulta_api(url, payload)
+
+    if data:
+        write_json_atomic(data, "/data/faturamento.json")
 
 def generate_vendedores():
     """
@@ -134,39 +130,22 @@ def generate_vendedores():
     }
 
     logging.info("Consultando API de vendedores...")
-    try:
-        response = requests.post(
-            url_vendedores,
-            json=payload_vendedores,
-            headers={"Content-Type": "application/json"},
-            timeout=30
-        )
-        if response.status_code == 200:
-            vendedores_data = response.json()
-            if 'cadastro' in vendedores_data:
-                vendedores = vendedores_data['cadastro']
-                data_dir = '/data'
-                os.makedirs(data_dir, exist_ok=True)
-                target_path = os.path.join(data_dir, "vendedores.json")
-                write_json_atomic(vendedores, target_path)
-                logging.info("Arquivo '%s' gerado com sucesso.", target_path)
-            else:
-                logging.error("Erro: Nenhum vendedor encontrado na resposta.")
-        else:
-            logging.error("Erro ao obter vendedores: status code %s", response.status_code)
-    except Exception as e:
-        logging.error("Erro na consulta de vendedores: %s", e)
+    data = consulta_api(url_vendedores, payload_vendedores)
+
+    if data and "cadastro" in data:
+        write_json_atomic(data["cadastro"], "/data/vendedores.json")
+    else:
+        logging.error("Erro: Nenhum vendedor encontrado na resposta.")
 
 def main():
     logging.info("Iniciando a consulta à API e geração dos arquivos JSON...")
+    
     generate_clientes()
     generate_faturamento()
     generate_vendedores()
 
-    # Cria um arquivo de flag para sinalizar que a geração foi concluída
-    data_dir = '/data'
-    os.makedirs(data_dir, exist_ok=True)
-    flag_path = os.path.join(data_dir, "done.flag")
+    # Criando flag para indicar que a geração foi concluída
+    flag_path = "/data/done.flag"
     try:
         with open(flag_path, 'w') as f:
             f.write("done")
